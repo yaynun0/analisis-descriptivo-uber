@@ -54,6 +54,5 @@ plt.tight_layout()
 plt.show()
 
 #TODO ver motivos de cancelación por horarios ej: Lunes 01 am
-#TODO molestar a canela
 
 #TODO Pronosticar cancelaciones de viaje
