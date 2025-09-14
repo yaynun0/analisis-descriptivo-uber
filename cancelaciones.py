@@ -48,11 +48,95 @@ pivot_reasons = pivot_reasons.reindex(pd.MultiIndex.from_product(
 ))
 
 # Hacemos gráfico de barras apiladas
-pivot_reasons.plot(kind="bar", stacked=True, figsize=(18,7), colormap="tab20")
+ax = pivot_reasons.plot(
+    kind="bar", stacked=True, figsize=(18,7), colormap="tab20"
+)
 
 plt.title("Distribución de razones de cancelación de clientes por hora y día")
 plt.ylabel("Porcentaje (%)")
-plt.xlabel("Día de la semana y hora")
+plt.xlabel("")
+
+# Etiquetas en el eje X solo cada 24 horas (cambio de día)
+num_hours = 24
+ticks = [i*num_hours for i in range(len(days_order))]
+labels = days_order
+
+ax.set_xticks(ticks)
+ax.set_xticklabels(labels, rotation=0)
+
+plt.legend(title="Razón de cancelación", bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.tight_layout()
+plt.show()
+
+# 1. Filtrar solo cancelaciones explícitas (ya definido como cancel_filter antes)
+df_cancelled = df[cancel_filter].copy()
+
+# 2. Razones de cancelación de cliente
+df_customer_reasons = df_cancelled[df_cancelled["Reason for cancelling by Customer"].notna()]
+
+# 3. Agrupar por día, hora y razón
+reasons_breakdown = df_customer_reasons.groupby(
+    ["DayOfWeek", "Hour", "Reason for cancelling by Customer"]
+).size().reset_index(name="Count")
+
+# Crear columna IsCancelled con las 3 condiciones
+cancel_filter = (
+    (df["Cancelled Rides by Customer"].fillna(0) > 0) |
+    (df["Cancelled Rides by Driver"].fillna(0) > 0) |
+    (df["Booking Status"] == "No Driver Found")
+)
+df["IsCancelled"] = cancel_filter
+
+# Agrupar viajes totales y cancelados por día y hora
+total_vs_cancel = df.groupby(["DayOfWeek", "Hour"]).agg(
+    total_rides=("Booking ID", "count"),
+    cancelled=("IsCancelled", "sum")
+).reset_index()
+
+# Calcular porcentaje de cancelación total
+total_vs_cancel["Cancel %"] = 100 * total_vs_cancel["cancelled"] / total_vs_cancel["total_rides"]
+
+total_vs_cancel.head()
+
+
+# 4. Unir con total de viajes por slot (ya lo tienes del heatmap)
+reasons_breakdown = reasons_breakdown.merge(
+    total_vs_cancel[["DayOfWeek","Hour","total_rides"]],
+    on=["DayOfWeek","Hour"],
+    how="left"
+)
+
+# 5. Calcular % del total de viajes
+reasons_breakdown["Percent of total"] = 100 * reasons_breakdown["Count"] / reasons_breakdown["total_rides"]
+
+# 6. Pivot para gráfico apilado
+pivot_reasons_total = reasons_breakdown.pivot_table(
+    index=["DayOfWeek","Hour"],
+    columns="Reason for cancelling by Customer",
+    values="Percent of total",
+    fill_value=0
+)
+
+# Ordenar días
+pivot_reasons_total = pivot_reasons_total.reindex(
+    pd.MultiIndex.from_product([days_order, range(24)]),
+    fill_value=0
+)
+
+# 7. Graficar
+ax = pivot_reasons_total.plot(
+    kind="bar", stacked=True, figsize=(18,7), colormap="tab20"
+)
+
+plt.title("Desglose de razones de cancelación de clientes (% del total de viajes)")
+plt.ylabel("% de viajes cancelados")
+plt.xlabel("")
+
+# Etiquetas: solo marcar días cada 24 horas
+ticks = [i*24 for i in range(len(days_order))]
+ax.set_xticks(ticks)
+ax.set_xticklabels(days_order, rotation=0)
+
 plt.legend(title="Razón de cancelación", bbox_to_anchor=(1.05, 1), loc='upper left')
 plt.tight_layout()
 plt.show()
